@@ -9,7 +9,7 @@ timenow = datetime.datetime.now
 
 # Camera Enum by Raspberry Pi
 rasp_pi_camera = 0
-thermal_camera = 1
+thermal_camera = 2
 
 # Set GPIO Object Enum
 RASP_PI_CAM_STATUS_LED_EN = 18 # Raspberry Pi Camera Readability Status LED is connected to GPIO 18
@@ -54,8 +54,9 @@ def saveImages(normal_frame, thermal_frame):
     if not os.path.exists(screenshot_folder):
         os.mkdir(screenshot_folder)
     # Save image
-    cv2.imwrite(screenshot_folder + "/" + str(timenow() ) + ".jpg",normal_frame)
-    cv2.imwrite(screenshot_folder + "/" + str(timenow() ) + "_thermal.jpg",thermal_frame)
+    time = timenow()
+    cv2.imwrite(screenshot_folder + "/" + str(time) + ".jpg",normal_frame)
+    cv2.imwrite(screenshot_folder + "/" + str(time) + "_thermal.jpg",thermal_frame)
 
 if vc_normal.isOpened(): # try to get the first frame
     normal_cam_status, normal_frame = vc_normal.read()
