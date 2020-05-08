@@ -1,7 +1,7 @@
 import cv2
 import RPi.GPIO as GPIO
 import datetime
-import time
+from time import time as timeInSeconds
 import os
 
 # Global Variable
@@ -13,9 +13,12 @@ video_button_pressed = False
 timenow = datetime.datetime.now
 
 # Camera Enum by Raspberry Pi
-rasp_pi_camera = 0
-thermal_camera = 1
+rasp_pi_camera_id = 0
+thermal_camera_id = 0
 
+# Camera Status
+normal_cam_status = False
+thermal_cam_status = False
 # Set GPIO Object Enum
 RASP_PI_CAM_STATUS_LED_EN = 18 # Raspberry Pi Camera Readability Status LED is connected to GPIO18 of the raspberry pi
 THERMAL_CAM_STATUS_LED_EN = 17 # Thermal Camera Readability Status LED is connected to GPIO17 of the raspberry pi
@@ -47,11 +50,45 @@ GPIO.setup(VIDEO_CAPTURE_STATUS_LED_EN,GPIO.OUT)
 GPIO.setup(SCREENSHOT_BUTTON_EN,GPIO.IN)
 GPIO.setup(VIDEO_START_STOP_BUTTON_EN,GPIO.IN)
 
-# Create Video Capture Object
-vc_normal = cv2.VideoCapture(rasp_pi_camera)
-print('Found vc_normal')
-vc_thermal = cv2.VideoCapture(thermal_camera)
-print('Found vc_thermal')
+def setRaspPiCameraID(cameraID):
+    global rasp_pi_camera_id
+    
+    rasp_pi_camera_id = cameraID
+
+def setThermalCameraID(cameraID):
+    global thermal_camera_id
+    thermal_camera_id = cameraID
+
+def checkAvailableDeviceID(cam):
+    return cam.isOpened()
+
+def getFrameWidth(cam):
+    cap_status, cap_frame = cam.read()
+    return cap_frame.shape[1]
+
+def scanAndSaveCameraID():
+    global normal_cam_status
+    global thermal_cam_status
+    
+    scanID = 0
+    print('The cameraID is Valid?')
+    while scanID < 5:
+        cam = cv2.VideoCapture(scanID)
+        cameraID_IsValid = checkAvailableDeviceID(cam)
+        print(cameraID_IsValid)
+        if cameraID_IsValid:
+            frameWidth = getFrameWidth(cam)
+            if frameWidth < 640:
+                setThermalCameraID(scanID)
+                thermal_cam_status = True
+                print('Thermal Camera ID is ' + str(scanID))
+            else:
+                setRaspPiCameraID(scanID)
+                normal_cam_status = True
+                print('Rasp Pi Camera ID is ' + str(scanID))
+        scanID+=1
+        cam.release()
+    print('\n\n')
 
 def turnOnOrOffStatus_LED(cameraStatus, cameraLED_GPIO_Name):
     if cameraStatus:
@@ -83,33 +120,33 @@ def init():
     turnOnOrOffStatus_LED(False, RASP_PI_CAM_STATUS_LED_EN)
     turnOnOrOffStatus_LED(False, VIDEO_CAPTURE_STATUS_LED_EN)
 
-init()
-
-if vc_normal.isOpened(): # try to get the first frame
-    normal_cam_status, normal_frame = vc_normal.read()
-    turnOnOrOffStatus_LED(normal_cam_status, RASP_PI_CAM_STATUS_LED_EN)
-else:
-    normal_cam_status = False
-    
-if vc_thermal.isOpened(): # try to get the first frame
-    thermal_cam_status, thermal_frame = vc_thermal.read()
-    turnOnOrOffStatus_LED(thermal_cam_status, THERMAL_CAM_STATUS_LED_EN)
+def getDesiredFrameResolution(capture):
+    status, frame = capture.read()
     
     # Get Scaled Thermal Image parameters
-    thermal_frame_width = int(thermal_frame.shape[1] * scale_percent / 100)
-    thermal_frame_height = int(thermal_frame.shape[0] * scale_percent / 100)
+    width = int(frame.shape[1] * scale_percent / 100) # scale_percent is a defined global variable
+    height = int(frame.shape[0] * scale_percent / 100) # scale_percent is a defined global variable
+    return (width, height)
     
-    if thermal_frame_width > 640:
-        thermal_frame_width /= 4
-        thermal_frame_height /=4
-    # Save desired resolution dimensions
-    thermal_frame_dim = (thermal_frame_width, thermal_frame_height)
+def rotate180Degrees(frame):
+    return cv2.flip(cv2.transpose(cv2.flip(cv2.transpose(frame),flipCode=1)),flipCode=1)
     
-else:
-    thermal_cam_status = False
+def resizeFrameToDesiredDim(frame, desired_dim):
+    return cv2.resize(frame, desired_dim, interpolation = cv2.INTER_AREA)
+
+init()
+scanAndSaveCameraID()
+
+# Create Video Capture Object
+if normal_cam_status and thermal_cam_status:
+    vc_normal = cv2.VideoCapture(rasp_pi_camera_id)
+    vc_thermal = cv2.VideoCapture(thermal_camera_id)
+
+    desired_dim = getDesiredFrameResolution(vc_thermal)
 
 while normal_cam_status and thermal_cam_status:
-    timeStart = time.time()
+    timeStart = timeInSeconds()
+    
     # Get Status and Frames from camera
     normal_cam_status, normal_frame = vc_normal.read()
     turnOnOrOffStatus_LED(normal_cam_status, RASP_PI_CAM_STATUS_LED_EN)
@@ -117,8 +154,8 @@ while normal_cam_status and thermal_cam_status:
     turnOnOrOffStatus_LED(thermal_cam_status, THERMAL_CAM_STATUS_LED_EN)
     
     # Image Manipulation
-    normal_frame_flipped_180 = cv2.flip(cv2.transpose(cv2.flip(cv2.transpose(normal_frame),flipCode=1)),flipCode=1) # Because the Raspberry Pi Camera is Mounted Upside, we need to rotate it 180 degrees
-    thermal_frame_resized = cv2.resize(thermal_frame, thermal_frame_dim, interpolation = cv2.INTER_AREA) # Thermal Camera's Native Resolution is 4 times smaller than the Raspi Cam's
+    normal_frame_flipped_180 = rotate180Degrees(normal_frame) # Because the Raspberry Pi Camera is Mounted Upside, we need to rotate it 180 degrees
+    thermal_frame_resized =  resizeFrameToDesiredDim(thermal_frame, desired_dim) # Thermal Camera's Native Resolution is 4 times smaller than the Raspi Cam's
     
     # Display Image in UI
     cv2.imshow("raspberry_pi_camera_v1_3", normal_frame_flipped_180)
@@ -155,8 +192,9 @@ while normal_cam_status and thermal_cam_status:
                 time = str(timenow())
                 normal_video_filename = time + ".avi"
                 thermal_video_filename = time + "_thermal.avi"
-                normal_video_writer = getVideoWriter(normal_video_filename, thermal_frame_dim)
-                thermal_video_writer = getVideoWriter(thermal_video_filename, thermal_frame_dim)
+                
+                normal_video_writer = getVideoWriter(normal_video_filename, desired_dim)
+                thermal_video_writer = getVideoWriter(thermal_video_filename, desired_dim)
             
             video_button_pressed = False
     
@@ -167,11 +205,8 @@ while normal_cam_status and thermal_cam_status:
     # Show the current recording status on the LED
     turnOnOrOffStatus_LED(videoCapture_Status, VIDEO_CAPTURE_STATUS_LED_EN)
         
-    
     # Delay to show frame for desired duration before reading the next frame
     key = cv2.waitKey(10)
-    
-    if key == 27: # exit on ESC
-        break
-    timeEnd = time.time()
+
+    timeEnd = timeInSeconds()
     print(timeStart - timeEnd)
