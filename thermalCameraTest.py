@@ -47,8 +47,8 @@ GPIO.setup(THERMAL_CAM_STATUS_LED_EN,GPIO.OUT)
 GPIO.setup(VIDEO_CAPTURE_STATUS_LED_EN,GPIO.OUT)
 
 # Push Button Inputs
-GPIO.setup(SCREENSHOT_BUTTON_EN,GPIO.IN)
-GPIO.setup(VIDEO_START_STOP_BUTTON_EN,GPIO.IN)
+GPIO.setup(SCREENSHOT_BUTTON_EN,GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+GPIO.setup(VIDEO_START_STOP_BUTTON_EN,GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
 def setRaspPiCameraID(cameraID):
     global rasp_pi_camera_id
@@ -102,15 +102,21 @@ def saveImages(normal_frame, thermal_frame):
         os.mkdir(screenshot_folder)
     # Save image
     time = timenow()
-    cv2.imwrite(screenshot_folder + "/" + str(time) + ".jpg",normal_frame)
-    cv2.imwrite(screenshot_folder + "/" + str(time) + "_thermal.jpg",thermal_frame)
+    
+    normal_frame_save = resizeFrameForSaving(normal_frame)
+    thermal_frame_save = resizeFrameForSaving(thermal_frame)
+    
+    cv2.imwrite(screenshot_folder + "/" + str(time) + ".jpg",normal_frame_save)
+    cv2.imwrite(screenshot_folder + "/" + str(time) + "_thermal.jpg",thermal_frame_save)
 
 def saveVideo(normal_writer, thermal_writer,normal_frame, thermal_frame):
     # Check if video folder exits:
     if not os.path.exists(video_folder):
         os.mkdir(video_folder)
-    normal_writer.write(normal_frame)
-    thermal_writer.write(thermal_frame)
+    normal_frame_save = resizeFrameForSaving(normal_frame)
+    thermal_frame_save = resizeFrameForSaving(thermal_frame)
+    normal_writer.write(normal_frame_save)
+    thermal_writer.write(thermal_frame_save)
     
 def getVideoWriter(videoName, dimensions):
     return cv2.VideoWriter(video_folder + "/" + videoName, cv2.VideoWriter_fourcc(*'XVID'), 10, dimensions)
@@ -127,6 +133,11 @@ def getDesiredFrameResolution(capture):
     width = int(frame.shape[1] * scale_percent / 100) # scale_percent is a defined global variable
     height = int(frame.shape[0] * scale_percent / 100) # scale_percent is a defined global variable
     return (width, height)
+    
+def resizeFrameForSaving(frame):
+    width = int(frame.shape[1] / scale_percent / 100) # scale_percent is a defined global variable
+    height = int(frame.shape[0] / scale_percent / 100) # scale_percent is a defined global variable
+    return cv2.resize(frame, desired_dim, interpolation = cv2.INTER_AREA)
     
 def rotate180Degrees(frame):
     return cv2.flip(cv2.transpose(cv2.flip(cv2.transpose(frame),flipCode=1)),flipCode=1)
