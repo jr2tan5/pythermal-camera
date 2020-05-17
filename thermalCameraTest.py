@@ -135,12 +135,13 @@ def getDesiredFrameResolution(capture):
     return (width, height)
     
 def resizeFrameForSaving(frame):
-    width = int(frame.shape[1] / scale_percent / 100) # scale_percent is a defined global variable
-    height = int(frame.shape[0] / scale_percent / 100) # scale_percent is a defined global variable
+    width = int(frame.shape[1] / (scale_percent / 100)) # scale_percent is a defined global variable
+    height = int(frame.shape[0] / (scale_percent / 100)) # scale_percent is a defined global variable
     return cv2.resize(frame, desired_dim, interpolation = cv2.INTER_AREA)
     
 def rotate180Degrees(frame):
-    return cv2.flip(cv2.transpose(cv2.flip(cv2.transpose(frame),flipCode=1)),flipCode=1)
+    #return cv2.flip(cv2.transpose(cv2.flip(cv2.transpose(frame),flipCode=1)),flipCode=1)
+    return cv2.rotate(frame,cv2.ROTATE_180)
     
 def resizeFrameToDesiredDim(frame, desired_dim):
     return cv2.resize(frame, desired_dim, interpolation = cv2.INTER_AREA)
